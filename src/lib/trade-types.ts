@@ -22,6 +22,21 @@ export interface Trade {
   notes: string;
   status: 'Open' | 'Closed';
   createdAt: string;
+
+  // CRT-specific fields
+  dealingRangeHigh: number | null;
+  dealingRangeLow: number | null;
+  equilibrium: number | null; // auto-calculated 50%
+  tradeLocation: 'Premium' | 'Discount' | 'EQ' | null;
+  liquiditySweepType: string | null;
+  keyLevels: string[];
+
+  // Entry model precision
+  entryType: string | null;
+  entryQuality: number | null; // 1-5
+  htfBiasRespected: boolean | null;
+  ltfBosConfirmed: boolean | null;
+  mssPresent: boolean | null;
 }
 
 export interface TradeStats {
@@ -33,6 +48,10 @@ export interface TradeStats {
   worstTrade: number;
   profitFactor: number;
   avgHoldingTime: string;
+  expectancy: number;
+  maxDrawdown: number;
+  consecutiveWins: number;
+  consecutiveLosses: number;
 }
 
 export const SESSIONS = ['London', 'New York', 'Asia', 'Sydney'] as const;
@@ -56,6 +75,30 @@ export const CONFLUENCES = [
   'EMA Alignment', 'RSI Divergence', 'Volume Profile', 'Fibonacci',
   'Trendline Break', 'Liquidity Zone', 'VWAP', 'Market Structure Shift',
 ];
+
+export const LIQUIDITY_SWEEP_TYPES = [
+  'PDH', 'PDL', 'Asian High', 'Asian Low', 'Internal', 'External',
+] as const;
+
+export const KEY_LEVELS = ['OB', 'FVG', 'RB', 'BB'] as const;
+
+export const ENTRY_TYPES = [
+  'FVG Mitigation', 'OB Tap', 'Breaker', 'Confirmation BOS', 'Aggressive', 'Conservative',
+] as const;
+
+export const TRADE_LOCATIONS = ['Premium', 'Discount', 'EQ'] as const;
+
+export function calculateEquilibrium(high: number, low: number): number {
+  return Math.round(((high + low) / 2) * 100000) / 100000;
+}
+
+export function getTradeLocation(price: number, high: number, low: number): 'Premium' | 'Discount' | 'EQ' {
+  const eq = calculateEquilibrium(high, low);
+  const range = high - low;
+  const eqZone = range * 0.05;
+  if (Math.abs(price - eq) <= eqZone) return 'EQ';
+  return price > eq ? 'Premium' : 'Discount';
+}
 
 export function calculatePips(pair: string, entry: number, exit: number, direction: 'Buy' | 'Sell'): number {
   const isJpy = pair.includes('JPY');

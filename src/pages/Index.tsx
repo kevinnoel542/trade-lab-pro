@@ -3,14 +3,16 @@ import { useTrades } from '@/hooks/use-trades';
 import { StatsGrid } from '@/components/StatsGrid';
 import { TradeForm } from '@/components/TradeForm';
 import { TradeTable } from '@/components/TradeTable';
+import Analytics from '@/pages/Analytics';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Plus, BarChart3, BookOpen } from 'lucide-react';
+import { Plus, BarChart3, BookOpen, LineChart } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Index = () => {
   const { trades, addTrade, deleteTrade, getStats } = useTrades();
   const [showForm, setShowForm] = useState(false);
+  const [activeTab, setActiveTab] = useState<'journal' | 'analytics'>('journal');
   const stats = getStats();
 
   const handleSubmit = (trade: Parameters<typeof addTrade>[0]) => {
@@ -35,32 +37,53 @@ const Index = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight">TradeVault</h1>
-              <p className="text-xs text-muted-foreground">Performance Laboratory</p>
+              <p className="text-xs text-muted-foreground">CRT Performance Lab</p>
             </div>
           </div>
-          <Button onClick={() => setShowForm(true)} size="sm" className="gap-1.5">
-            <Plus className="h-4 w-4" />
-            New Trade
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-border overflow-hidden mr-2">
+              <button
+                onClick={() => setActiveTab('journal')}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'journal' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                Journal
+              </button>
+              <button
+                onClick={() => setActiveTab('analytics')}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'analytics' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <LineChart className="h-3.5 w-3.5" />
+                Analytics
+              </button>
+            </div>
+            <Button onClick={() => setShowForm(true)} size="sm" className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              New Trade
+            </Button>
+          </div>
         </div>
       </header>
 
       {/* Main */}
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* Stats */}
-        <StatsGrid stats={stats} />
-
-        {/* Trade List */}
-        <div className="rounded-lg bg-card border border-border">
-          <div className="flex items-center justify-between p-4 border-b border-border">
-            <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-muted-foreground" />
-              <h2 className="font-semibold">Trade History</h2>
-              <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full font-mono">{trades.length}</span>
+        {activeTab === 'journal' ? (
+          <>
+            <StatsGrid stats={stats} />
+            <div className="rounded-lg bg-card border border-border">
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-muted-foreground" />
+                  <h2 className="font-semibold">Trade History</h2>
+                  <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full font-mono">{trades.length}</span>
+                </div>
+              </div>
+              <TradeTable trades={trades} onDelete={handleDelete} />
             </div>
-          </div>
-          <TradeTable trades={trades} onDelete={handleDelete} />
-        </div>
+          </>
+        ) : (
+          <Analytics trades={trades} />
+        )}
       </main>
 
       {/* Trade Form Dialog */}
