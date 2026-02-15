@@ -1,16 +1,51 @@
-import { useState } from 'react';
-import { Trade, SESSIONS, PAIRS, STRATEGIES, TIMEFRAMES, MARKET_CONDITIONS, CONFLUENCES, generateTradeId, calculatePips, calculateRMultiple, calculatePnlDollar, calculatePnlPercent } from '@/lib/trade-types';
+import { useState, useMemo } from 'react';
+import { Trade, SESSIONS, PAIRS, STRATEGIES, TIMEFRAMES, MARKET_CONDITIONS, CONFLUENCES, LIQUIDITY_SWEEP_TYPES, KEY_LEVELS, ENTRY_TYPES, TRADE_LOCATIONS, calculateEquilibrium, getTradeLocation, calculatePips, calculateRMultiple, calculatePnlDollar, calculatePnlPercent } from '@/lib/trade-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { X, Camera, Calculator } from 'lucide-react';
 
 interface TradeFormProps {
   onSubmit: (trade: Omit<Trade, 'id' | 'createdAt'>) => void;
   onCancel: () => void;
+}
+
+function ToggleChips({ items, selected, onToggle, label }: { items: readonly string[]; selected: string[]; onToggle: (v: string) => void; label: string }) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex flex-wrap gap-2">
+        {items.map(c => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onToggle(c)}
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+              selected.includes(c)
+                ? 'bg-primary/20 text-primary border border-primary/40'
+                : 'bg-secondary text-secondary-foreground border border-border hover:border-muted-foreground/30'
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BooleanToggle({ label, value, onChange }: { label: string; value: boolean | null; onChange: (v: boolean) => void }) {
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <div className="flex gap-1">
+        <button type="button" onClick={() => onChange(true)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${value === true ? 'bg-profit/20 text-profit border border-profit/40' : 'bg-secondary text-secondary-foreground border border-border'}`}>Yes</button>
+        <button type="button" onClick={() => onChange(false)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${value === false ? 'bg-loss/20 text-loss border border-loss/40' : 'bg-secondary text-secondary-foreground border border-border'}`}>No</button>
+      </div>
+    </div>
+  );
 }
 
 export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
@@ -34,6 +69,17 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
     confluences: [] as string[],
     notes: '',
     status: 'Open' as 'Open' | 'Closed',
+    // CRT fields
+    dealingRangeHigh: '',
+    dealingRangeLow: '',
+    liquiditySweepType: '' as string,
+    keyLevels: [] as string[],
+    // Entry model
+    entryType: '' as string,
+    entryQuality: '' as string,
+    htfBiasRespected: null as boolean | null,
+    ltfBosConfirmed: null as boolean | null,
+    mssPresent: null as boolean | null,
   });
 
   const [screenshotBefore, setScreenshotBefore] = useState<string | null>(null);
@@ -51,12 +97,12 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
     reader.readAsDataURL(file);
   };
 
-  const toggleConfluence = (c: string) => {
+  const toggleList = (key: 'confluences' | 'keyLevels', value: string) => {
     setForm(prev => ({
       ...prev,
-      confluences: prev.confluences.includes(c)
-        ? prev.confluences.filter(x => x !== c)
-        : [...prev.confluences, c],
+      [key]: prev[key].includes(value)
+        ? prev[key].filter(x => x !== value)
+        : [...prev[key], value],
     }));
   };
 
@@ -67,11 +113,13 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
   const dir = form.direction as 'Buy' | 'Sell';
   const riskAmt = parseFloat(form.riskAmount) || 0;
   const accSize = parseFloat(form.accountSize) || 0;
+  const drHigh = parseFloat(form.dealingRangeHigh) || 0;
+  const drLow = parseFloat(form.dealingRangeLow) || 0;
 
-  const plannedRR = sl && tp && entry
-    ? Math.abs((tp - entry) / (entry - sl))
-    : 0;
+  const equilibrium = useMemo(() => drHigh && drLow ? calculateEquilibrium(drHigh, drLow) : null, [drHigh, drLow]);
+  const autoTradeLocation = useMemo(() => entry && drHigh && drLow ? getTradeLocation(entry, drHigh, drLow) : null, [entry, drHigh, drLow]);
 
+  const plannedRR = sl && tp && entry ? Math.abs((tp - entry) / (entry - sl)) : 0;
   const actualPips = exit && entry && form.pair ? calculatePips(form.pair, entry, exit, dir) : 0;
   const rMultiple = exit && entry && sl ? calculateRMultiple(entry, exit, sl, dir) : 0;
   const pnlDollar = riskAmt && rMultiple ? calculatePnlDollar(riskAmt, rMultiple) : 0;
@@ -101,12 +149,22 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
       screenshotAfter,
       notes: form.notes,
       status: form.status,
+      dealingRangeHigh: drHigh || null,
+      dealingRangeLow: drLow || null,
+      equilibrium: equilibrium,
+      tradeLocation: autoTradeLocation,
+      liquiditySweepType: form.liquiditySweepType || null,
+      keyLevels: form.keyLevels,
+      entryType: form.entryType || null,
+      entryQuality: form.entryQuality ? parseInt(form.entryQuality) : null,
+      htfBiasRespected: form.htfBiasRespected,
+      ltfBosConfirmed: form.ltfBosConfirmed,
+      mssPresent: form.mssPresent,
     });
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-h-[80vh] overflow-y-auto pr-2">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">New Trade</h2>
         <Button type="button" variant="ghost" size="icon" onClick={onCancel}>
@@ -187,7 +245,6 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
           </div>
         </div>
 
-        {/* Auto-calculated */}
         {(entry > 0 && sl > 0) && (
           <div className="flex flex-wrap gap-4 p-3 rounded-lg bg-secondary/50 border border-border">
             <div className="flex items-center gap-2">
@@ -216,6 +273,74 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
             )}
           </div>
         )}
+      </div>
+
+      {/* CRT / Dealing Range */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">CRT / Dealing Range</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">DR High</Label>
+            <Input type="number" step="0.00001" placeholder="1.09000" value={form.dealingRangeHigh} onChange={e => setForm(p => ({ ...p, dealingRangeHigh: e.target.value }))} className="font-mono text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">DR Low</Label>
+            <Input type="number" step="0.00001" placeholder="1.08000" value={form.dealingRangeLow} onChange={e => setForm(p => ({ ...p, dealingRangeLow: e.target.value }))} className="font-mono text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Equilibrium (50%)</Label>
+            <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted/50 font-mono text-sm">
+              {equilibrium !== null ? equilibrium : '—'}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Trade Location</Label>
+            <div className={`h-9 flex items-center px-3 rounded-md border font-mono text-sm font-semibold ${
+              autoTradeLocation === 'Premium' ? 'border-loss/40 bg-loss/10 text-loss' :
+              autoTradeLocation === 'Discount' ? 'border-profit/40 bg-profit/10 text-profit' :
+              autoTradeLocation === 'EQ' ? 'border-warning/40 bg-warning/10 text-warning' :
+              'border-border bg-muted/50 text-muted-foreground'
+            }`}>
+              {autoTradeLocation || '—'}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Liquidity Sweep</Label>
+            <Select value={form.liquiditySweepType} onValueChange={v => setForm(p => ({ ...p, liquiditySweepType: v }))}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Sweep type" /></SelectTrigger>
+              <SelectContent>{LIQUIDITY_SWEEP_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+        </div>
+        <ToggleChips items={KEY_LEVELS} selected={form.keyLevels} onToggle={v => toggleList('keyLevels', v)} label="Key Levels" />
+      </div>
+
+      {/* Entry Model */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Entry Model</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Entry Type</Label>
+            <Select value={form.entryType} onValueChange={v => setForm(p => ({ ...p, entryType: v }))}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Entry type" /></SelectTrigger>
+              <SelectContent>{ENTRY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Entry Quality (1–5)</Label>
+            <Select value={form.entryQuality} onValueChange={v => setForm(p => ({ ...p, entryQuality: v }))}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Score" /></SelectTrigger>
+              <SelectContent>{[1,2,3,4,5].map(n => <SelectItem key={n} value={String(n)}>{'⭐'.repeat(n)} ({n})</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <BooleanToggle label="HTF Bias Respected?" value={form.htfBiasRespected} onChange={v => setForm(p => ({ ...p, htfBiasRespected: v }))} />
+          <BooleanToggle label="LTF BOS Confirmed?" value={form.ltfBosConfirmed} onChange={v => setForm(p => ({ ...p, ltfBosConfirmed: v }))} />
+          <BooleanToggle label="MSS Present?" value={form.mssPresent} onChange={v => setForm(p => ({ ...p, mssPresent: v }))} />
+        </div>
       </div>
 
       {/* Strategy */}
@@ -251,71 +376,38 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
             </Select>
           </div>
         </div>
-
-        {/* Confluences */}
-        <div className="space-y-2">
-          <Label className="text-xs">Confluences</Label>
-          <div className="flex flex-wrap gap-2">
-            {CONFLUENCES.map(c => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => toggleConfluence(c)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  form.confluences.includes(c)
-                    ? 'bg-primary/20 text-primary border border-primary/40'
-                    : 'bg-secondary text-secondary-foreground border border-border hover:border-muted-foreground/30'
-                }`}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ToggleChips items={CONFLUENCES} selected={form.confluences} onToggle={v => toggleList('confluences', v)} label="Confluences" />
       </div>
 
       {/* Screenshots */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Screenshots</h3>
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">Before Entry</Label>
-            {screenshotBefore ? (
-              <div className="relative group">
-                <img src={screenshotBefore} alt="Before" className="rounded-lg border border-border w-full h-32 object-cover" />
-                <button type="button" onClick={() => setScreenshotBefore(null)} className="absolute top-1 right-1 bg-background/80 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <X className="h-3 w-3" />
-                </button>
+          {(['before', 'after'] as const).map(type => {
+            const img = type === 'before' ? screenshotBefore : screenshotAfter;
+            const setImg = type === 'before' ? setScreenshotBefore : setScreenshotAfter;
+            return (
+              <div key={type} className="space-y-1">
+                <Label className="text-xs">{type === 'before' ? 'Before Entry' : 'After Exit'}</Label>
+                {img ? (
+                  <div className="relative group">
+                    <img src={img} alt={type} className="rounded-lg border border-border w-full h-32 object-cover" />
+                    <button type="button" onClick={() => setImg(null)} className="absolute top-1 right-1 bg-background/80 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center h-32 rounded-lg border border-dashed border-border bg-secondary/30 cursor-pointer hover:border-muted-foreground/40 transition-colors">
+                    <div className="text-center">
+                      <Camera className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
+                      <span className="text-xs text-muted-foreground">Upload</span>
+                    </div>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload(type)} />
+                  </label>
+                )}
               </div>
-            ) : (
-              <label className="flex items-center justify-center h-32 rounded-lg border border-dashed border-border bg-secondary/30 cursor-pointer hover:border-muted-foreground/40 transition-colors">
-                <div className="text-center">
-                  <Camera className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                  <span className="text-xs text-muted-foreground">Upload</span>
-                </div>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload('before')} />
-              </label>
-            )}
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">After Exit</Label>
-            {screenshotAfter ? (
-              <div className="relative group">
-                <img src={screenshotAfter} alt="After" className="rounded-lg border border-border w-full h-32 object-cover" />
-                <button type="button" onClick={() => setScreenshotAfter(null)} className="absolute top-1 right-1 bg-background/80 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ) : (
-              <label className="flex items-center justify-center h-32 rounded-lg border border-dashed border-border bg-secondary/30 cursor-pointer hover:border-muted-foreground/40 transition-colors">
-                <div className="text-center">
-                  <Camera className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                  <span className="text-xs text-muted-foreground">Upload</span>
-                </div>
-                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload('after')} />
-              </label>
-            )}
-          </div>
+            );
+          })}
         </div>
       </div>
 
@@ -337,7 +429,6 @@ export function TradeForm({ onSubmit, onCancel }: TradeFormProps) {
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex gap-3 pt-2">
         <Button type="submit" className="flex-1">Log Trade</Button>
         <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
