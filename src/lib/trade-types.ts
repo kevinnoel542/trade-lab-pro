@@ -62,7 +62,7 @@ export const PAIRS = [
 ];
 
 export const STRATEGIES = [
-  'Breakout', 'Liquidity Sweep', 'Trend Continuation', 'Reversal',
+  'CRT', 'Breakout', 'Liquidity Sweep', 'Trend Continuation', 'Reversal',
   'Range Play', 'News Trade', 'Scalp', 'Swing', 'Order Block Entry',
 ];
 

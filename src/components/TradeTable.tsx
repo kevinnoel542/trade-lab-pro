@@ -1,16 +1,16 @@
-import { Trade, calculateRMultiple, calculatePnlDollar, calculatePips } from '@/lib/trade-types';
-import { Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { DbTrade } from '@/hooks/use-trades';
+import { calculateRMultiple, calculatePnlDollar, calculatePips } from '@/lib/trade-types';
+import { Trash2, Eye, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
 
 interface TradeTableProps {
-  trades: Trade[];
+  trades: DbTrade[];
   onDelete: (id: string) => void;
+  onView: (trade: DbTrade) => void;
+  onEdit: (trade: DbTrade) => void;
 }
 
-export function TradeTable({ trades, onDelete }: TradeTableProps) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
+export function TradeTable({ trades, onDelete, onView, onEdit }: TradeTableProps) {
   if (trades.length === 0) {
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -36,23 +36,18 @@ export function TradeTable({ trades, onDelete }: TradeTableProps) {
             <th className="text-right py-3 px-2">P&L</th>
             <th className="text-left py-3 px-2">Strategy</th>
             <th className="text-center py-3 px-2">Status</th>
-            <th className="text-right py-3 px-2"></th>
+            <th className="text-right py-3 px-2">Actions</th>
           </tr>
         </thead>
         <tbody>
           {trades.map(trade => {
-            const hasExit = trade.exitPrice !== null && trade.exitPrice !== 0;
-            const pips = hasExit ? calculatePips(trade.pair, trade.entryPrice, trade.exitPrice!, trade.direction) : null;
-            const rMult = hasExit ? calculateRMultiple(trade.entryPrice, trade.exitPrice!, trade.stopLoss, trade.direction) : null;
-            const pnl = hasExit && rMult !== null ? calculatePnlDollar(trade.riskAmount, rMult) : null;
-            const isExpanded = expandedId === trade.id;
+            const hasExit = trade.exit_price !== null && trade.exit_price !== 0;
+            const pips = hasExit ? calculatePips(trade.pair, trade.entry_price, trade.exit_price!, trade.direction as 'Buy' | 'Sell') : null;
+            const rMult = hasExit ? calculateRMultiple(trade.entry_price, trade.exit_price!, trade.stop_loss, trade.direction as 'Buy' | 'Sell') : null;
+            const pnl = hasExit && rMult !== null ? calculatePnlDollar(trade.risk_amount, rMult) : null;
 
             return (
-              <tr
-                key={trade.id}
-                className="border-b border-border/50 hover:bg-secondary/30 transition-colors cursor-pointer"
-                onClick={() => setExpandedId(isExpanded ? null : trade.id)}
-              >
+              <tr key={trade.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">
                 <td className="py-2.5 px-2 font-mono text-xs">{trade.date}</td>
                 <td className="py-2.5 px-2 font-semibold">{trade.pair}</td>
                 <td className="py-2.5 px-2">
@@ -61,8 +56,8 @@ export function TradeTable({ trades, onDelete }: TradeTableProps) {
                   </span>
                 </td>
                 <td className="py-2.5 px-2 text-muted-foreground text-xs">{trade.session}</td>
-                <td className="py-2.5 px-2 font-mono text-right">{trade.entryPrice}</td>
-                <td className="py-2.5 px-2 font-mono text-right">{hasExit ? trade.exitPrice : '—'}</td>
+                <td className="py-2.5 px-2 font-mono text-right">{trade.entry_price}</td>
+                <td className="py-2.5 px-2 font-mono text-right">{hasExit ? trade.exit_price : '—'}</td>
                 <td className={`py-2.5 px-2 font-mono text-right font-semibold ${pips !== null ? (pips >= 0 ? 'text-profit' : 'text-loss') : ''}`}>
                   {pips !== null ? `${pips > 0 ? '+' : ''}${pips}` : '—'}
                 </td>
@@ -79,14 +74,17 @@ export function TradeTable({ trades, onDelete }: TradeTableProps) {
                   </span>
                 </td>
                 <td className="py-2.5 px-2 text-right">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-loss"
-                    onClick={(e) => { e.stopPropagation(); onDelete(trade.id); }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onView(trade)}>
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(trade)}>
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-loss" onClick={() => onDelete(trade.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </td>
               </tr>
             );

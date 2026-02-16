@@ -1,11 +1,29 @@
 import { useMemo, useState } from 'react';
-import { Trade, calculateRMultiple, calculatePnlDollar, SESSIONS, KEY_LEVELS, LIQUIDITY_SWEEP_TYPES, ENTRY_TYPES, TRADE_LOCATIONS, STRATEGIES, PAIRS, MARKET_CONDITIONS } from '@/lib/trade-types';
+import { calculateRMultiple, calculatePnlDollar, SESSIONS, KEY_LEVELS, LIQUIDITY_SWEEP_TYPES, ENTRY_TYPES, TRADE_LOCATIONS, STRATEGIES, PAIRS, MARKET_CONDITIONS } from '@/lib/trade-types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart3, TrendingUp, Target, Scale, AlertTriangle, Trophy, Zap, ArrowDown } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+interface AnalyticsTrade {
+  entryPrice: number;
+  exitPrice: number | null;
+  stopLoss: number;
+  riskAmount: number;
+  direction: 'Buy' | 'Sell';
+  tradeLocation: string | null;
+  keyLevels: string[];
+  liquiditySweepType: string | null;
+  entryType: string | null;
+  marketCondition: string | null;
+  strategy: string | null;
+  session: string;
+  status: string;
+  pair: string;
+  date: string;
+}
 
 interface AnalyticsProps {
-  trades: Trade[];
+  trades: AnalyticsTrade[];
 }
 
 function MetricCard({ label, value, icon: Icon, colorClass }: { label: string; value: string | number; icon: any; colorClass?: string }) {
@@ -20,7 +38,7 @@ function MetricCard({ label, value, icon: Icon, colorClass }: { label: string; v
   );
 }
 
-function WinRateByGroup({ trades, groupBy, label }: { trades: Trade[]; groupBy: (t: Trade) => string | null; label: string }) {
+function WinRateByGroup({ trades, groupBy, label }: { trades: AnalyticsTrade[]; groupBy: (t: AnalyticsTrade) => string | null; label: string }) {
   const data = useMemo(() => {
     const groups: Record<string, { wins: number; total: number }> = {};
     trades.forEach(t => {
@@ -33,9 +51,7 @@ function WinRateByGroup({ trades, groupBy, label }: { trades: Trade[]; groupBy: 
       if (rMult > 0) groups[key].wins++;
     });
     return Object.entries(groups).map(([name, { wins, total }]) => ({
-      name,
-      winRate: Math.round((wins / total) * 100),
-      total,
+      name, winRate: Math.round((wins / total) * 100), total,
     })).sort((a, b) => b.winRate - a.winRate);
   }, [trades, groupBy]);
 
@@ -50,10 +66,7 @@ function WinRateByGroup({ trades, groupBy, label }: { trades: Trade[]; groupBy: 
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 18%)" />
             <XAxis dataKey="name" tick={{ fill: 'hsl(215 12% 50%)', fontSize: 11 }} />
             <YAxis tick={{ fill: 'hsl(215 12% 50%)', fontSize: 11 }} domain={[0, 100]} />
-            <Tooltip
-              contentStyle={{ backgroundColor: 'hsl(220 18% 12%)', border: '1px solid hsl(220 14% 18%)', borderRadius: 8, fontSize: 12 }}
-              formatter={(value: number, name: string) => [`${value}%`, 'Win Rate']}
-            />
+            <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 12%)', border: '1px solid hsl(220 14% 18%)', borderRadius: 8, fontSize: 12 }} formatter={(value: number) => [`${value}%`, 'Win Rate']} />
             <Bar dataKey="winRate" radius={[4, 4, 0, 0]}>
               {data.map((entry, i) => (
                 <Cell key={i} fill={entry.winRate >= 50 ? 'hsl(142 60% 45%)' : 'hsl(0 72% 51%)'} />
@@ -111,37 +124,16 @@ export default function Analytics({ trades }: AnalyticsProps) {
       else if (r.pnl < 0) { cl++; cw = 0; maxConsLosses = Math.max(maxConsLosses, cl); }
       else { cw = 0; cl = 0; }
     }
-
     let peak = 0, maxDD = 0, cumPnl = 0;
-    for (const r of results) {
-      cumPnl += r.pnl;
-      peak = Math.max(peak, cumPnl);
-      maxDD = Math.max(maxDD, peak - cumPnl);
-    }
+    for (const r of results) { cumPnl += r.pnl; peak = Math.max(peak, cumPnl); maxDD = Math.max(maxDD, peak - cumPnl); }
 
-    // Best/worst strategy
     const stratGroups: Record<string, number[]> = {};
-    results.forEach(r => {
-      const s = r.trade.strategy || 'Unknown';
-      if (!stratGroups[s]) stratGroups[s] = [];
-      stratGroups[s].push(r.pnl);
-    });
+    results.forEach(r => { const s = r.trade.strategy || 'Unknown'; if (!stratGroups[s]) stratGroups[s] = []; stratGroups[s].push(r.pnl); });
     const stratPerf = Object.entries(stratGroups).map(([name, pnls]) => ({
-      name, total: pnls.reduce((a, b) => a + b, 0), count: pnls.length,
-      winRate: Math.round((pnls.filter(p => p > 0).length / pnls.length) * 100),
+      name, total: pnls.reduce((a, b) => a + b, 0),
     }));
     const bestStrat = stratPerf.sort((a, b) => b.total - a.total)[0]?.name || '—';
     const worstStrat = stratPerf.sort((a, b) => a.total - b.total)[0]?.name || '—';
-
-    // Best/worst day
-    const dayGroups: Record<string, number> = {};
-    results.forEach(r => {
-      const d = r.trade.date;
-      dayGroups[d] = (dayGroups[d] || 0) + r.pnl;
-    });
-    const days = Object.entries(dayGroups).sort((a, b) => b[1] - a[1]);
-    const bestDay = days[0]?.[0] || '—';
-    const worstDay = days[days.length - 1]?.[0] || '—';
 
     return {
       winRate, avgR: Math.round(avgR * 100) / 100,
@@ -149,23 +141,18 @@ export default function Analytics({ trades }: AnalyticsProps) {
       profitFactor: totalLosses === 0 ? totalWins : Math.round((totalWins / totalLosses) * 100) / 100,
       maxDrawdown: Math.round(maxDD * 100) / 100,
       consecutiveWins: maxConsWins, consecutiveLosses: maxConsLosses,
-      bestStrat, worstStrat, bestDay, worstDay,
+      bestStrat, worstStrat,
       totalPnl: Math.round(results.reduce((s, r) => s + r.pnl, 0) * 100) / 100,
       results,
     };
   }, [closed]);
 
-  // Equity curve data
   const equityCurve = useMemo(() => {
     if (!stats) return [];
     let cum = 0;
-    return stats.results.map((r, i) => {
-      cum += r.pnl;
-      return { trade: i + 1, equity: Math.round(cum * 100) / 100 };
-    });
+    return stats.results.map((r, i) => { cum += r.pnl; return { trade: i + 1, equity: Math.round(cum * 100) / 100 }; });
   }, [stats]);
 
-  // R-multiple distribution
   const rDistribution = useMemo(() => {
     if (!stats) return [];
     const buckets: Record<string, number> = {};
@@ -183,55 +170,13 @@ export default function Analytics({ trades }: AnalyticsProps) {
       <div className="rounded-lg bg-card border border-border p-4">
         <h3 className="text-sm font-semibold mb-3">Filters</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-          <Select value={filterPair} onValueChange={setFilterPair}>
-            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Pair" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Pairs</SelectItem>
-              {PAIRS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterSession} onValueChange={setFilterSession}>
-            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Session" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sessions</SelectItem>
-              {SESSIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterStrategy} onValueChange={setFilterStrategy}>
-            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Strategy" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Strategies</SelectItem>
-              {STRATEGIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterCondition} onValueChange={setFilterCondition}>
-            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Condition" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Conditions</SelectItem>
-              {MARKET_CONDITIONS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterKeyLevel} onValueChange={setFilterKeyLevel}>
-            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Key Level" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Levels</SelectItem>
-              {KEY_LEVELS.map(k => <SelectItem key={k} value={k}>{k}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterLiquidity} onValueChange={setFilterLiquidity}>
-            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Liquidity" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {LIQUIDITY_SWEEP_TYPES.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterLocation} onValueChange={setFilterLocation}>
-            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Location" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Locations</SelectItem>
-              {TRADE_LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Select value={filterPair} onValueChange={setFilterPair}><SelectTrigger className="text-xs h-8"><SelectValue placeholder="Pair" /></SelectTrigger><SelectContent><SelectItem value="all">All Pairs</SelectItem>{PAIRS.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select>
+          <Select value={filterSession} onValueChange={setFilterSession}><SelectTrigger className="text-xs h-8"><SelectValue placeholder="Session" /></SelectTrigger><SelectContent><SelectItem value="all">All Sessions</SelectItem>{SESSIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+          <Select value={filterStrategy} onValueChange={setFilterStrategy}><SelectTrigger className="text-xs h-8"><SelectValue placeholder="Strategy" /></SelectTrigger><SelectContent><SelectItem value="all">All Strategies</SelectItem>{STRATEGIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select>
+          <Select value={filterCondition} onValueChange={setFilterCondition}><SelectTrigger className="text-xs h-8"><SelectValue placeholder="Condition" /></SelectTrigger><SelectContent><SelectItem value="all">All Conditions</SelectItem>{MARKET_CONDITIONS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent></Select>
+          <Select value={filterKeyLevel} onValueChange={setFilterKeyLevel}><SelectTrigger className="text-xs h-8"><SelectValue placeholder="Key Level" /></SelectTrigger><SelectContent><SelectItem value="all">All Levels</SelectItem>{KEY_LEVELS.map(k => <SelectItem key={k} value={k}>{k}</SelectItem>)}</SelectContent></Select>
+          <Select value={filterLiquidity} onValueChange={setFilterLiquidity}><SelectTrigger className="text-xs h-8"><SelectValue placeholder="Liquidity" /></SelectTrigger><SelectContent><SelectItem value="all">All Types</SelectItem>{LIQUIDITY_SWEEP_TYPES.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
+          <Select value={filterLocation} onValueChange={setFilterLocation}><SelectTrigger className="text-xs h-8"><SelectValue placeholder="Location" /></SelectTrigger><SelectContent><SelectItem value="all">All Locations</SelectItem>{TRADE_LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select>
         </div>
       </div>
 
@@ -242,7 +187,7 @@ export default function Analytics({ trades }: AnalyticsProps) {
         </div>
       ) : (
         <>
-          {/* Metrics Grid */}
+          {/* Metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
             <MetricCard label="Win Rate" value={`${stats.winRate}%`} icon={Target} colorClass={stats.winRate >= 50 ? 'text-profit' : 'text-loss'} />
             <MetricCard label="Avg R/Trade" value={`${stats.avgR}R`} icon={Scale} colorClass={stats.avgR >= 0 ? 'text-profit' : 'text-loss'} />
@@ -256,9 +201,8 @@ export default function Analytics({ trades }: AnalyticsProps) {
             <MetricCard label="Worst Strategy" value={stats.worstStrat} icon={AlertTriangle} colorClass="text-loss" />
           </div>
 
-          {/* Charts Row */}
+          {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Equity Curve */}
             <div className="rounded-lg bg-card border border-border p-4">
               <h3 className="text-sm font-semibold mb-3">Equity Curve</h3>
               <div className="h-56">
@@ -273,8 +217,6 @@ export default function Analytics({ trades }: AnalyticsProps) {
                 </ResponsiveContainer>
               </div>
             </div>
-
-            {/* R-Multiple Distribution */}
             <div className="rounded-lg bg-card border border-border p-4">
               <h3 className="text-sm font-semibold mb-3">R-Multiple Distribution</h3>
               <div className="h-56">
@@ -298,11 +240,41 @@ export default function Analytics({ trades }: AnalyticsProps) {
           {/* Win Rate Breakdowns */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <WinRateByGroup trades={filtered} groupBy={t => t.session} label="Win Rate by Session" />
-            <WinRateByGroup trades={filtered} groupBy={t => t.tradeLocation} label="Win Rate by Trade Location" />
-            <WinRateByGroup trades={filtered} groupBy={t => t.keyLevels?.length ? t.keyLevels.join('+') : null} label="Win Rate by Key Level" />
+            <WinRateByGroup trades={filtered} groupBy={t => t.tradeLocation} label="Win Rate by Premium vs Discount" />
+            <WinRateByGroup trades={filtered} groupBy={t => {
+              // Individual key level win rates
+              if (!t.keyLevels?.length) return null;
+              return t.keyLevels.join('+');
+            }} label="Win Rate by Key Level (OB/FVG/RB/BB)" />
             <WinRateByGroup trades={filtered} groupBy={t => t.strategy || null} label="Win Rate by Strategy" />
-            <WinRateByGroup trades={filtered} groupBy={t => t.liquiditySweepType} label="Win Rate by Liquidity Sweep" />
-            <WinRateByGroup trades={filtered} groupBy={t => t.entryType} label="Win Rate by Entry Type" />
+            <WinRateByGroup trades={filtered} groupBy={t => t.liquiditySweepType} label="Win Rate by Sweep Type (PDH/Internal)" />
+            <WinRateByGroup trades={filtered} groupBy={t => t.entryType} label="Win Rate by Entry Model" />
+          </div>
+
+          {/* Individual Key Level Breakdown */}
+          <WinRateByGroup trades={filtered} groupBy={t => {
+            // Flatten: show each key level separately
+            return null; // handled by per-level below
+          }} label="" />
+          
+          {/* Per individual key level */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {(['OB', 'FVG', 'RB', 'BB'] as const).map(level => {
+              const levelTrades = filtered.filter(t => t.keyLevels?.includes(level));
+              const closedLevel = levelTrades.filter(t => t.status === 'Closed' && t.exitPrice);
+              if (closedLevel.length === 0) return null;
+              const wins = closedLevel.filter(t => calculateRMultiple(t.entryPrice, t.exitPrice!, t.stopLoss, t.direction) > 0);
+              const wr = Math.round((wins.length / closedLevel.length) * 100);
+              return (
+                <div key={level} className="rounded-lg bg-card border border-border p-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold">{level} Trades</h3>
+                    <p className="text-xs text-muted-foreground">{closedLevel.length} trades</p>
+                  </div>
+                  <div className={`text-2xl font-mono font-bold ${wr >= 50 ? 'text-profit' : 'text-loss'}`}>{wr}%</div>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
