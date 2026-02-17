@@ -12,12 +12,12 @@ import Auth from '@/pages/Auth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BarChart3, BookOpen, LineChart, Wallet, LogOut } from 'lucide-react';
+import { Plus, BarChart3, BookOpen, LineChart, Wallet, LogOut, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Index = () => {
   const { user, loading: authLoading, signOut } = useAuth();
-  const { accounts, activeAccount, transactions, loading: accLoading, switchAccount, createAccount, updateAccount, deleteAccount, addTransaction } = useAccounts(user?.id);
+  const { accounts, activeAccount, transactions, loading: accLoading, switchAccount, createAccount, updateAccount, deleteAccount, addTransaction, refreshBalances } = useAccounts(user?.id);
   const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade, getStats } = useTrades(user?.id, activeAccount?.id);
 
   const [showForm, setShowForm] = useState(false);
@@ -59,10 +59,12 @@ const Index = () => {
       setShowForm(false);
       toast.success('Trade logged successfully');
     }
+    await refreshBalances();
   };
 
   const handleDelete = async (id: string) => {
     await deleteTrade(id);
+    await refreshBalances();
     toast.success('Trade deleted');
   };
 
@@ -138,6 +140,39 @@ const Index = () => {
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {activeTab === 'journal' ? (
           <>
+            {/* Balance Card */}
+            {activeAccount && (
+              <div className="rounded-lg bg-card border border-border p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center">
+                    <DollarSign className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{activeAccount.name} Balance</p>
+                    <p className="text-2xl font-mono font-bold">${activeAccount.current_balance.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted-foreground uppercase">Initial</p>
+                    <p className="font-mono text-sm text-muted-foreground">${activeAccount.initial_balance.toLocaleString()}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted-foreground uppercase">P&L</p>
+                    {(() => {
+                      const diff = activeAccount.current_balance - activeAccount.initial_balance;
+                      const isPositive = diff >= 0;
+                      return (
+                        <p className={`font-mono text-sm font-semibold flex items-center gap-1 ${isPositive ? 'text-profit' : 'text-loss'}`}>
+                          {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                          {isPositive ? '+' : ''}${diff.toLocaleString()}
+                        </p>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
             <StatsGrid stats={stats} />
             <div className="rounded-lg bg-card border border-border">
               <div className="flex items-center justify-between p-4 border-b border-border">

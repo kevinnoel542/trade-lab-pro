@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { DbTrade } from '@/hooks/use-trades';
-import { SESSIONS, PAIRS, STRATEGIES, TIMEFRAMES, MARKET_CONDITIONS, CONFLUENCES, LIQUIDITY_SWEEP_TYPES, KEY_LEVELS, ENTRY_TYPES, calculateEquilibrium, getTradeLocation, calculatePips, calculateRMultiple, calculatePnlDollar, calculatePnlPercent, generateTradeId } from '@/lib/trade-types';
+import { SESSIONS, PAIRS, STRATEGIES, TIMEFRAMES, MARKET_CONDITIONS, CONFLUENCES, LIQUIDITY_SWEEP_TYPES, KEY_LEVELS, ENTRY_TYPES, calculateEquilibrium, getTradeLocation, calculatePips, calculateRMultiple, calculatePnlDollar, calculatePnlPercent, generateTradeId, priceToPips, pipsToDollars } from '@/lib/trade-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -114,8 +114,15 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
   const dir = form.direction as 'Buy' | 'Sell';
   const riskPct = parseFloat(form.riskPercent) || 0;
   const riskAmt = Math.round(accountBalance * (riskPct / 100) * 100) / 100;
+  const lotSize = parseFloat(form.lotSize) || 0;
   const drHigh = parseFloat(form.dealingRangeHigh) || 0;
   const drLow = parseFloat(form.dealingRangeLow) || 0;
+
+  // Pip-based calculations for SL and TP
+  const slPips = entry && sl && form.pair ? priceToPips(form.pair, entry, sl) : 0;
+  const tpPips = entry && tp && form.pair ? priceToPips(form.pair, entry, tp) : 0;
+  const slDollars = slPips && lotSize && form.pair ? pipsToDollars(form.pair, slPips, lotSize) : 0;
+  const tpDollars = tpPips && lotSize && form.pair ? pipsToDollars(form.pair, tpPips, lotSize) : 0;
 
   const equilibrium = useMemo(() => drHigh && drLow ? calculateEquilibrium(drHigh, drLow) : null, [drHigh, drLow]);
   const autoTradeLocation = useMemo(() => entry && drHigh && drLow ? getTradeLocation(entry, drHigh, drLow) : null, [entry, drHigh, drLow]);
@@ -212,8 +219,16 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="space-y-1"><Label className="text-xs">Lot Size</Label><Input type="number" step="0.01" placeholder="0.10" value={form.lotSize} onChange={e => setForm(p => ({ ...p, lotSize: e.target.value }))} className="font-mono text-sm" /></div>
           <div className="space-y-1"><Label className="text-xs">Entry Price</Label><Input type="number" step="0.00001" placeholder="1.08500" value={form.entryPrice} onChange={e => setForm(p => ({ ...p, entryPrice: e.target.value }))} className="font-mono text-sm" /></div>
-          <div className="space-y-1"><Label className="text-xs">Stop Loss</Label><Input type="number" step="0.00001" placeholder="1.08300" value={form.stopLoss} onChange={e => setForm(p => ({ ...p, stopLoss: e.target.value }))} className="font-mono text-sm" /></div>
-          <div className="space-y-1"><Label className="text-xs">Take Profit</Label><Input type="number" step="0.00001" placeholder="1.08900" value={form.takeProfit} onChange={e => setForm(p => ({ ...p, takeProfit: e.target.value }))} className="font-mono text-sm" /></div>
+          <div className="space-y-1">
+            <Label className="text-xs">Stop Loss</Label>
+            <Input type="number" step="0.00001" placeholder="1.08300" value={form.stopLoss} onChange={e => setForm(p => ({ ...p, stopLoss: e.target.value }))} className="font-mono text-sm" />
+            {slPips > 0 && <p className="text-[10px] font-mono text-muted-foreground">{slPips} pips · <span className="text-loss">${slDollars}</span></p>}
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Take Profit</Label>
+            <Input type="number" step="0.00001" placeholder="1.08900" value={form.takeProfit} onChange={e => setForm(p => ({ ...p, takeProfit: e.target.value }))} className="font-mono text-sm" />
+            {tpPips > 0 && <p className="text-[10px] font-mono text-muted-foreground">{tpPips} pips · <span className="text-profit">${tpDollars}</span></p>}
+          </div>
           <div className="space-y-1"><Label className="text-xs">Exit Price</Label><Input type="number" step="0.00001" placeholder="—" value={form.exitPrice} onChange={e => setForm(p => ({ ...p, exitPrice: e.target.value }))} className="font-mono text-sm" /></div>
           <div className="space-y-1">
             <Label className="text-xs">Risk %</Label>
