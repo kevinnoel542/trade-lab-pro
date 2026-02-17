@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { TradeStats, calculateRMultiple, calculatePnlDollar } from '@/lib/trade-types';
+import { TradeStats, calculateRMultiple, calculatePips, pipsToDollars } from '@/lib/trade-types';
 
 export interface DbTrade {
   id: string;
@@ -84,8 +84,10 @@ export function useTrades(userId: string | undefined, accountId: string | undefi
       return { totalTrades: 0, winRate: 0, totalPnl: 0, avgRMultiple: 0, bestTrade: 0, worstTrade: 0, profitFactor: 0, avgHoldingTime: '—', expectancy: 0, maxDrawdown: 0, consecutiveWins: 0, consecutiveLosses: 0 };
     }
     const results = closed.map(t => {
-      const rMult = calculateRMultiple(t.entry_price, t.exit_price!, t.stop_loss, t.direction as 'Buy' | 'Sell');
-      const pnl = calculatePnlDollar(t.risk_amount, rMult);
+      const dir = t.direction as 'Buy' | 'Sell';
+      const pips = calculatePips(t.pair, t.entry_price, t.exit_price!, dir);
+      const pnl = pipsToDollars(t.pair, Math.abs(pips), t.lot_size) * (pips >= 0 ? 1 : -1);
+      const rMult = calculateRMultiple(t.entry_price, t.exit_price!, t.stop_loss, dir);
       return { rMult, pnl };
     });
     const wins = results.filter(r => r.pnl > 0);

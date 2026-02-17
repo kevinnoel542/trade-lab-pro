@@ -70,7 +70,7 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
     stopLoss: initialData?.stop_loss?.toString() || '',
     takeProfit: initialData?.take_profit?.toString() || '',
     exitPrice: initialData?.exit_price?.toString() || '',
-    riskPercent: initialData?.risk_percent?.toString() || '1',
+    riskPercent: initialData?.risk_percent?.toString() || '',
     strategy: initialData?.strategy || '',
     htfTimeframe: initialData?.htf_timeframe || '',
     entryTimeframe: initialData?.entry_timeframe || '',
@@ -112,8 +112,6 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
   const tp = parseFloat(form.takeProfit) || 0;
   const exit = parseFloat(form.exitPrice) || 0;
   const dir = form.direction as 'Buy' | 'Sell';
-  const riskPct = parseFloat(form.riskPercent) || 0;
-  const riskAmt = Math.round(accountBalance * (riskPct / 100) * 100) / 100;
   const lotSize = parseFloat(form.lotSize) || 0;
   const drHigh = parseFloat(form.dealingRangeHigh) || 0;
   const drLow = parseFloat(form.dealingRangeLow) || 0;
@@ -124,14 +122,18 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
   const slDollars = slPips && lotSize && form.pair ? pipsToDollars(form.pair, slPips, lotSize) : 0;
   const tpDollars = tpPips && lotSize && form.pair ? pipsToDollars(form.pair, tpPips, lotSize) : 0;
 
+  // Risk amount = SL dollar value (pip-based), Risk % = auto-calculated from balance
+  const riskAmt = slDollars;
+  const riskPct = accountBalance > 0 && riskAmt > 0 ? Math.round((riskAmt / accountBalance) * 10000) / 100 : 0;
+
   const equilibrium = useMemo(() => drHigh && drLow ? calculateEquilibrium(drHigh, drLow) : null, [drHigh, drLow]);
   const autoTradeLocation = useMemo(() => entry && drHigh && drLow ? getTradeLocation(entry, drHigh, drLow) : null, [entry, drHigh, drLow]);
 
   const plannedRR = sl && tp && entry ? Math.abs((tp - entry) / (entry - sl)) : 0;
   const actualPips = exit && entry && form.pair ? calculatePips(form.pair, entry, exit, dir) : 0;
+  const actualPnlDollar = actualPips && lotSize && form.pair ? pipsToDollars(form.pair, Math.abs(actualPips), lotSize) * (actualPips >= 0 ? 1 : -1) : 0;
   const rMultiple = exit && entry && sl ? calculateRMultiple(entry, exit, sl, dir) : 0;
-  const pnlDollar = riskAmt && rMultiple ? calculatePnlDollar(riskAmt, rMultiple) : 0;
-  const pnlPercent = pnlDollar && accountBalance ? calculatePnlPercent(pnlDollar, accountBalance) : 0;
+  const pnlPercent = actualPnlDollar && accountBalance ? calculatePnlPercent(actualPnlDollar, accountBalance) : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,12 +233,12 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
           </div>
           <div className="space-y-1"><Label className="text-xs">Exit Price</Label><Input type="number" step="0.00001" placeholder="—" value={form.exitPrice} onChange={e => setForm(p => ({ ...p, exitPrice: e.target.value }))} className="font-mono text-sm" /></div>
           <div className="space-y-1">
-            <Label className="text-xs">Risk %</Label>
-            <Input type="number" step="0.1" placeholder="1.0" value={form.riskPercent} onChange={e => setForm(p => ({ ...p, riskPercent: e.target.value }))} className="font-mono text-sm" />
+            <Label className="text-xs">Risk % (auto)</Label>
+            <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted/50 font-mono text-sm">{riskPct > 0 ? `${riskPct}%` : '—'}</div>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Risk Amount (auto)</Label>
-            <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted/50 font-mono text-sm">${riskAmt.toLocaleString()}</div>
+            <div className="h-9 flex items-center px-3 rounded-md border border-border bg-muted/50 font-mono text-sm">{riskAmt > 0 ? `$${riskAmt.toLocaleString()}` : '—'}</div>
           </div>
         </div>
 
@@ -251,8 +253,8 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
               <>
                 <div><span className="text-xs text-muted-foreground">Pips: </span><span className={`font-mono text-sm font-semibold ${actualPips >= 0 ? 'text-profit' : 'text-loss'}`}>{actualPips > 0 ? '+' : ''}{actualPips}</span></div>
                 <div><span className="text-xs text-muted-foreground">R-Mult: </span><span className={`font-mono text-sm font-semibold ${rMultiple >= 0 ? 'text-profit' : 'text-loss'}`}>{rMultiple > 0 ? '+' : ''}{rMultiple}R</span></div>
-                {riskAmt > 0 && (
-                  <div><span className="text-xs text-muted-foreground">P&L: </span><span className={`font-mono text-sm font-semibold ${pnlDollar >= 0 ? 'text-profit' : 'text-loss'}`}>{pnlDollar > 0 ? '+' : ''}${pnlDollar}</span>
+                {actualPnlDollar !== 0 && (
+                  <div><span className="text-xs text-muted-foreground">P&L: </span><span className={`font-mono text-sm font-semibold ${actualPnlDollar >= 0 ? 'text-profit' : 'text-loss'}`}>{actualPnlDollar > 0 ? '+' : ''}${actualPnlDollar}</span>
                     {accountBalance > 0 && <span className={`font-mono text-xs ml-1 ${pnlPercent >= 0 ? 'text-profit' : 'text-loss'}`}>({pnlPercent > 0 ? '+' : ''}{pnlPercent}%)</span>}
                   </div>
                 )}

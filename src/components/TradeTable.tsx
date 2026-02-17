@@ -1,5 +1,5 @@
 import { DbTrade } from '@/hooks/use-trades';
-import { calculateRMultiple, calculatePnlDollar, calculatePips } from '@/lib/trade-types';
+import { calculatePips, pipsToDollars } from '@/lib/trade-types';
 import { Trash2, Eye, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -43,8 +43,8 @@ export function TradeTable({ trades, onDelete, onView, onEdit }: TradeTableProps
           {trades.map(trade => {
             const hasExit = trade.exit_price !== null && trade.exit_price !== 0;
             const pips = hasExit ? calculatePips(trade.pair, trade.entry_price, trade.exit_price!, trade.direction as 'Buy' | 'Sell') : null;
-            const rMult = hasExit ? calculateRMultiple(trade.entry_price, trade.exit_price!, trade.stop_loss, trade.direction as 'Buy' | 'Sell') : null;
-            const pnl = hasExit && rMult !== null ? calculatePnlDollar(trade.risk_amount, rMult) : null;
+            const rMult = hasExit ? (Math.abs(trade.entry_price - trade.stop_loss) > 0 ? Math.round(((trade.direction === 'Buy' ? trade.exit_price! - trade.entry_price : trade.entry_price - trade.exit_price!) / Math.abs(trade.entry_price - trade.stop_loss)) * 100) / 100 : 0) : null;
+            const pnl = hasExit && pips !== null ? pipsToDollars(trade.pair, Math.abs(pips), trade.lot_size) * (pips >= 0 ? 1 : -1) : null;
 
             return (
               <tr key={trade.id} className="border-b border-border/50 hover:bg-secondary/30 transition-colors">

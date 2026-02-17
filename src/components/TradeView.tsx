@@ -1,5 +1,5 @@
 import { DbTrade } from '@/hooks/use-trades';
-import { calculateRMultiple, calculatePnlDollar, calculatePips, calculatePnlPercent } from '@/lib/trade-types';
+import { calculatePips, calculatePnlPercent, pipsToDollars, calculateRMultiple } from '@/lib/trade-types';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 
@@ -22,7 +22,7 @@ export default function TradeView({ trade, onClose }: TradeViewProps) {
   const dir = trade.direction as 'Buy' | 'Sell';
   const pips = hasExit ? calculatePips(trade.pair, trade.entry_price, trade.exit_price!, dir) : null;
   const rMult = hasExit ? calculateRMultiple(trade.entry_price, trade.exit_price!, trade.stop_loss, dir) : null;
-  const pnl = hasExit && rMult !== null ? calculatePnlDollar(trade.risk_amount, rMult) : null;
+  const pnl = hasExit && pips !== null ? pipsToDollars(trade.pair, Math.abs(pips), trade.lot_size) * (pips >= 0 ? 1 : -1) : null;
   const pnlPct = pnl !== null && trade.account_size ? calculatePnlPercent(pnl, trade.account_size) : null;
 
   return (
