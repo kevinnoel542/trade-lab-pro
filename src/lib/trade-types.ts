@@ -124,6 +124,33 @@ export function calculatePnlPercent(pnlDollar: number, accountSize: number): num
   return Math.round((pnlDollar / accountSize) * 10000) / 100;
 }
 
+/** Get the dollar value per pip for a given pair and lot size. Standard lot = 100k units. */
+export function getPipValue(pair: string, lotSize: number): number {
+  const isJpy = pair.includes('JPY');
+  const isGold = pair.includes('XAU');
+  const isSilver = pair.includes('XAG');
+  const isIndex = ['US30', 'NAS100', 'SPX500'].includes(pair);
+  if (isGold) return lotSize * 100 * 0.1; // 1 pip = 0.1, contract = 100oz
+  if (isSilver) return lotSize * 5000 * 0.01;
+  if (isIndex) return lotSize * 1; // $1 per point per lot (simplified)
+  if (isJpy) return lotSize * 100000 * 0.01 / 100; // ~$10 per pip per standard lot (simplified to USD)
+  // Standard forex: 1 pip = 0.0001, lot = 100,000 units → $10/pip/lot
+  return lotSize * 10;
+}
+
+/** Calculate dollar value from pips, lot size, and pair */
+export function pipsToDollars(pair: string, pips: number, lotSize: number): number {
+  return Math.round(getPipValue(pair, lotSize) * pips * 100) / 100;
+}
+
+/** Calculate pips from entry and SL/TP prices */
+export function priceToPips(pair: string, entry: number, target: number): number {
+  const isJpy = pair.includes('JPY');
+  const isGold = pair.includes('XAU');
+  const multiplier = isJpy ? 100 : isGold ? 10 : 10000;
+  return Math.round(Math.abs(target - entry) * multiplier * 10) / 10;
+}
+
 export function generateTradeId(): string {
   const now = new Date();
   const datePart = now.toISOString().slice(2, 10).replace(/-/g, '');

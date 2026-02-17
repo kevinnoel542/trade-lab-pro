@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { calculateRMultiple, calculatePnlDollar } from '@/lib/trade-types';
 
 export interface TradingAccount {
   id: string;
@@ -25,6 +26,15 @@ export interface AccountTransaction {
   created_at: string;
 }
 
+interface ClosedTradeRow {
+  entry_price: number;
+  exit_price: number;
+  stop_loss: number;
+  direction: string;
+  risk_amount: number;
+  account_id: string;
+}
+
 const ACTIVE_ACCOUNT_KEY = 'tradevault-active-account';
 
 export function useAccounts(userId: string | undefined) {
@@ -33,9 +43,43 @@ export function useAccounts(userId: string | undefined) {
     localStorage.getItem(ACTIVE_ACCOUNT_KEY)
   );
   const [transactions, setTransactions] = useState<AccountTransaction[]>([]);
+  const [allTransactions, setAllTransactions] = useState<AccountTransaction[]>([]);
+  const [closedTrades, setClosedTrades] = useState<ClosedTradeRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const activeAccount = accounts.find(a => a.id === activeAccountId) || accounts[0] || null;
+  // Fetch all transactions & closed trades for dynamic balance calc
+  const fetchBalanceData = useCallback(async () => {
+    if (!userId) return;
+    const [txRes, tradeRes] = await Promise.all([
+      supabase.from('account_transactions').select('*').eq('user_id', userId),
+      supabase.from('trades').select('entry_price, exit_price, stop_loss, direction, risk_amount, account_id')
+        .eq('user_id', userId).eq('status', 'Closed').not('exit_price', 'is', null),
+    ]);
+    if (txRes.data) setAllTransactions(txRes.data as AccountTransaction[]);
+    if (tradeRes.data) setClosedTrades(tradeRes.data as ClosedTradeRow[]);
+  }, [userId]);
+
+  // Compute dynamic balances per account
+  const dynamicBalances = useMemo(() => {
+    const map: Record<string, number> = {};
+    accounts.forEach(acc => {
+      const deposits = allTransactions.filter(t => t.account_id === acc.id && t.type === 'deposit').reduce((s, t) => s + t.amount, 0);
+      const withdrawals = allTransactions.filter(t => t.account_id === acc.id && t.type === 'withdrawal').reduce((s, t) => s + t.amount, 0);
+      const tradePnl = closedTrades.filter(t => t.account_id === acc.id).reduce((sum, t) => {
+        const rMult = calculateRMultiple(t.entry_price, t.exit_price!, t.stop_loss, t.direction as 'Buy' | 'Sell');
+        return sum + calculatePnlDollar(t.risk_amount, rMult);
+      }, 0);
+      map[acc.id] = Math.round((acc.initial_balance + deposits - withdrawals + tradePnl) * 100) / 100;
+    });
+    return map;
+  }, [accounts, allTransactions, closedTrades]);
+
+  // Enrich accounts with computed current_balance
+  const enrichedAccounts = useMemo(() =>
+    accounts.map(a => ({ ...a, current_balance: dynamicBalances[a.id] ?? a.current_balance })),
+  [accounts, dynamicBalances]);
+
+  const activeAccount = enrichedAccounts.find(a => a.id === activeAccountId) || enrichedAccounts[0] || null;
 
   const fetchAccounts = useCallback(async () => {
     if (!userId) return;
@@ -63,7 +107,7 @@ export function useAccounts(userId: string | undefined) {
     if (data) setTransactions(data as AccountTransaction[]);
   }, []);
 
-  useEffect(() => { fetchAccounts(); }, [fetchAccounts]);
+  useEffect(() => { fetchAccounts(); fetchBalanceData(); }, [fetchAccounts, fetchBalanceData]);
   useEffect(() => { if (activeAccount) fetchTransactions(activeAccount.id); }, [activeAccount?.id, fetchTransactions]);
 
   const switchAccount = (id: string) => {
@@ -96,35 +140,32 @@ export function useAccounts(userId: string | undefined) {
         else setActiveAccountId(null);
       }
       await fetchAccounts();
+      await fetchBalanceData();
     }
     return { error };
   };
 
   const addTransaction = async (accountId: string, type: 'deposit' | 'withdrawal', amount: number, note?: string) => {
     if (!userId) return;
-    const account = accounts.find(a => a.id === accountId);
-    if (!account) return;
-
-    const newBalance = type === 'deposit'
-      ? account.current_balance + amount
-      : account.current_balance - amount;
 
     const { error: txError } = await supabase.from('account_transactions').insert({
       account_id: accountId, user_id: userId, type, amount, note: note || null,
     });
     if (txError) return { error: txError };
 
-    const { error: updateError } = await supabase.from('trading_accounts')
-      .update({ current_balance: newBalance }).eq('id', accountId);
-    if (!updateError) {
-      await fetchAccounts();
-      await fetchTransactions(accountId);
-    }
-    return { error: updateError };
+    // Refresh balance data (dynamic calc will update current_balance)
+    await fetchBalanceData();
+    await fetchTransactions(accountId);
+    return { error: null };
   };
 
+  // Allow external refresh of balance data (e.g. after closing a trade)
+  const refreshBalances = useCallback(async () => {
+    await fetchBalanceData();
+  }, [fetchBalanceData]);
+
   return {
-    accounts, activeAccount, activeAccountId, transactions, loading,
-    switchAccount, createAccount, updateAccount, deleteAccount, addTransaction, fetchAccounts,
+    accounts: enrichedAccounts, activeAccount, activeAccountId, transactions, loading,
+    switchAccount, createAccount, updateAccount, deleteAccount, addTransaction, fetchAccounts, refreshBalances,
   };
 }
