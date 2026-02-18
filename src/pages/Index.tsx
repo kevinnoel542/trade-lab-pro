@@ -6,6 +6,7 @@ import { StatsGrid } from '@/components/StatsGrid';
 import { TradeForm } from '@/components/TradeForm';
 import { TradeTable } from '@/components/TradeTable';
 import TradeView from '@/components/TradeView';
+import { CsvExportImport } from '@/components/CsvExportImport';
 import Analytics from '@/pages/Analytics';
 import Accounts from '@/pages/Accounts';
 import Auth from '@/pages/Auth';
@@ -181,6 +182,13 @@ const Index = () => {
                   <h2 className="font-semibold">Trade History</h2>
                   <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full font-mono">{trades.length}</span>
                 </div>
+                <CsvExportImport
+                  trades={trades}
+                  userId={user.id}
+                  accountId={activeAccount!.id}
+                  accountBalance={activeAccount!.current_balance}
+                  onImport={addTrade}
+                />
               </div>
               <TradeTable trades={trades} onDelete={handleDelete} onView={setViewTrade} onEdit={handleEdit} />
             </div>

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { calculateRMultiple, calculatePnlDollar, SESSIONS, KEY_LEVELS, LIQUIDITY_SWEEP_TYPES, ENTRY_TYPES, TRADE_LOCATIONS, STRATEGIES, PAIRS, MARKET_CONDITIONS } from '@/lib/trade-types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart3, TrendingUp, Target, Scale, AlertTriangle, Trophy, Zap, ArrowDown } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Area, AreaChart } from 'recharts';
+import PerformanceSummary from '@/components/PerformanceSummary';
 
 interface AnalyticsTrade {
   entryPrice: number;
@@ -149,8 +150,13 @@ export default function Analytics({ trades }: AnalyticsProps) {
 
   const equityCurve = useMemo(() => {
     if (!stats) return [];
+    // Sort by date then compute cumulative P&L
+    const sorted = [...stats.results].sort((a, b) => a.trade.date.localeCompare(b.trade.date));
     let cum = 0;
-    return stats.results.map((r, i) => { cum += r.pnl; return { trade: i + 1, equity: Math.round(cum * 100) / 100 }; });
+    return sorted.map((r) => {
+      cum += r.pnl;
+      return { date: r.trade.date, equity: Math.round(cum * 100) / 100, pnl: Math.round(r.pnl * 100) / 100 };
+    });
   }, [stats]);
 
   const rDistribution = useMemo(() => {
@@ -204,16 +210,22 @@ export default function Analytics({ trades }: AnalyticsProps) {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-lg bg-card border border-border p-4">
-              <h3 className="text-sm font-semibold mb-3">Equity Curve</h3>
+              <h3 className="text-sm font-semibold mb-3">Equity Curve (Over Time)</h3>
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={equityCurve}>
+                  <AreaChart data={equityCurve}>
+                    <defs>
+                      <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(142 60% 45%)" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="hsl(142 60% 45%)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 14% 18%)" />
-                    <XAxis dataKey="trade" tick={{ fill: 'hsl(215 12% 50%)', fontSize: 11 }} />
+                    <XAxis dataKey="date" tick={{ fill: 'hsl(215 12% 50%)', fontSize: 10 }} />
                     <YAxis tick={{ fill: 'hsl(215 12% 50%)', fontSize: 11 }} />
-                    <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 12%)', border: '1px solid hsl(220 14% 18%)', borderRadius: 8, fontSize: 12 }} />
-                    <Line type="monotone" dataKey="equity" stroke="hsl(142 60% 45%)" strokeWidth={2} dot={false} />
-                  </LineChart>
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(220 18% 12%)', border: '1px solid hsl(220 14% 18%)', borderRadius: 8, fontSize: 12 }} formatter={(value: number, name: string) => [`$${value}`, name === 'equity' ? 'Cumulative P&L' : 'Trade P&L']} />
+                    <Area type="monotone" dataKey="equity" stroke="hsl(142 60% 45%)" strokeWidth={2} fill="url(#equityGradient)" />
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
@@ -276,6 +288,8 @@ export default function Analytics({ trades }: AnalyticsProps) {
               );
             })}
           </div>
+          {/* Performance Summaries */}
+          <PerformanceSummary trades={filtered} />
         </>
       )}
     </div>
