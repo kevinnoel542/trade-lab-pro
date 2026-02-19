@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { X, Camera, Calculator } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
 interface TradeFormProps {
   onSubmit: (trade: Omit<DbTrade, 'id' | 'created_at' | 'updated_at'>) => void;
@@ -44,18 +44,6 @@ function BooleanToggle({ label, value, onChange }: { label: string; value: boole
       </div>
     </div>
   );
-}
-
-async function uploadScreenshot(userId: string, file: File, tradeDate: string, type: 'before' | 'after'): Promise<string | null> {
-  const now = new Date();
-  const timePart = now.toTimeString().slice(0, 8).replace(/:/g, '');
-  const ext = file.name.split('.').pop() || 'png';
-  const path = `${userId}/${tradeDate.replace(/-/g, '/')}/${timePart}/${type}.${ext}`;
-  
-  const { error } = await supabase.storage.from('trade-screenshots').upload(path, file);
-  if (error) return null;
-  const { data } = supabase.storage.from('trade-screenshots').getPublicUrl(path);
-  return data.publicUrl;
 }
 
 export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalance, initialData }: TradeFormProps) {
@@ -116,13 +104,11 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
   const drHigh = parseFloat(form.dealingRangeHigh) || 0;
   const drLow = parseFloat(form.dealingRangeLow) || 0;
 
-  // Pip-based calculations for SL and TP
   const slPips = entry && sl && form.pair ? priceToPips(form.pair, entry, sl) : 0;
   const tpPips = entry && tp && form.pair ? priceToPips(form.pair, entry, tp) : 0;
   const slDollars = slPips && lotSize && form.pair ? pipsToDollars(form.pair, slPips, lotSize) : 0;
   const tpDollars = tpPips && lotSize && form.pair ? pipsToDollars(form.pair, tpPips, lotSize) : 0;
 
-  // Risk amount = SL dollar value (pip-based), Risk % = auto-calculated from balance
   const riskAmt = slDollars;
   const riskPct = accountBalance > 0 && riskAmt > 0 ? Math.round((riskAmt / accountBalance) * 10000) / 100 : 0;
 
@@ -142,8 +128,9 @@ export function TradeForm({ onSubmit, onCancel, userId, accountId, accountBalanc
     let ssBefore = initialData?.screenshot_before || null;
     let ssAfter = initialData?.screenshot_after || null;
     
-    if (screenshotBeforeFile) ssBefore = await uploadScreenshot(userId, screenshotBeforeFile, form.date, 'before');
-    if (screenshotAfterFile) ssAfter = await uploadScreenshot(userId, screenshotAfterFile, form.date, 'after');
+    // Upload screenshots to local Express server
+    if (screenshotBeforeFile) ssBefore = await api.uploadScreenshot(screenshotBeforeFile, form.date, 'before');
+    if (screenshotAfterFile) ssAfter = await api.uploadScreenshot(screenshotAfterFile, form.date, 'after');
 
     onSubmit({
       user_id: userId,

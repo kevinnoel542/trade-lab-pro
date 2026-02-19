@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { TradeStats, calculateRMultiple, calculatePips, pipsToDollars } from '@/lib/trade-types';
 
 export interface DbTrade {
@@ -48,32 +48,28 @@ export function useTrades(userId: string | undefined, accountId: string | undefi
   const [loading, setLoading] = useState(true);
 
   const fetchTrades = useCallback(async () => {
-    if (!userId || !accountId) { setTrades([]); setLoading(false); return; }
-    const { data } = await supabase
-      .from('trades')
-      .select('*')
-      .eq('account_id', accountId)
-      .order('date', { ascending: false });
+    if (!accountId) { setTrades([]); setLoading(false); return; }
+    const { data } = await api.getTrades(accountId);
     if (data) setTrades(data as DbTrade[]);
     setLoading(false);
-  }, [userId, accountId]);
+  }, [accountId]);
 
   useEffect(() => { fetchTrades(); }, [fetchTrades]);
 
   const addTrade = useCallback(async (trade: Omit<DbTrade, 'id' | 'created_at' | 'updated_at'>) => {
-    const { error } = await supabase.from('trades').insert(trade);
+    const { error } = await api.createTrade(trade);
     if (!error) await fetchTrades();
     return { error };
   }, [fetchTrades]);
 
   const updateTrade = useCallback(async (id: string, updates: Partial<DbTrade>) => {
-    const { error } = await supabase.from('trades').update(updates).eq('id', id);
+    const { error } = await api.updateTrade(id, updates);
     if (!error) await fetchTrades();
     return { error };
   }, [fetchTrades]);
 
   const deleteTrade = useCallback(async (id: string) => {
-    const { error } = await supabase.from('trades').delete().eq('id', id);
+    const { error } = await api.deleteTrade(id);
     if (!error) await fetchTrades();
     return { error };
   }, [fetchTrades]);

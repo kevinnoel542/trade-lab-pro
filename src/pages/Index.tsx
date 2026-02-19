@@ -9,15 +9,14 @@ import TradeView from '@/components/TradeView';
 import { CsvExportImport } from '@/components/CsvExportImport';
 import Analytics from '@/pages/Analytics';
 import Accounts from '@/pages/Accounts';
-import Auth from '@/pages/Auth';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, BarChart3, BookOpen, LineChart, Wallet, LogOut, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Plus, BarChart3, BookOpen, LineChart, Wallet, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Index = () => {
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user } = useAuth();
   const { accounts, activeAccount, transactions, loading: accLoading, switchAccount, createAccount, updateAccount, deleteAccount, addTransaction, refreshBalances } = useAccounts(user?.id);
   const { trades, loading: tradesLoading, addTrade, updateTrade, deleteTrade, getStats } = useTrades(user?.id, activeAccount?.id);
 
@@ -26,8 +25,6 @@ const Index = () => {
   const [viewTrade, setViewTrade] = useState<DbTrade | null>(null);
   const [activeTab, setActiveTab] = useState<'journal' | 'analytics' | 'accounts'>('journal');
 
-  if (authLoading) return <div className="min-h-screen bg-background flex items-center justify-center"><span className="text-muted-foreground">Loading...</span></div>;
-  if (!user) return <Auth />;
   if (accLoading) return <div className="min-h-screen bg-background flex items-center justify-center"><span className="text-muted-foreground">Loading accounts...</span></div>;
 
   // If no accounts, show account creation
@@ -101,7 +98,7 @@ const Index = () => {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight">TradeVault</h1>
-              <p className="text-xs text-muted-foreground">CRT Performance Lab</p>
+              <p className="text-xs text-muted-foreground">CRT Performance Lab · Offline</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -133,7 +130,6 @@ const Index = () => {
             {activeTab === 'journal' && (
               <Button onClick={() => setShowForm(true)} size="sm" className="gap-1.5"><Plus className="h-4 w-4" />New Trade</Button>
             )}
-            <Button variant="ghost" size="icon" onClick={signOut} className="h-8 w-8"><LogOut className="h-4 w-4" /></Button>
           </div>
         </div>
       </header>
