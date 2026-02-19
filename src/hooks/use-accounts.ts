@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { calculateRMultiple, calculatePnlDollar } from '@/lib/trade-types';
 
 export interface TradingAccount {
@@ -47,19 +47,15 @@ export function useAccounts(userId: string | undefined) {
   const [closedTrades, setClosedTrades] = useState<ClosedTradeRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch all transactions & closed trades for dynamic balance calc
   const fetchBalanceData = useCallback(async () => {
-    if (!userId) return;
     const [txRes, tradeRes] = await Promise.all([
-      supabase.from('account_transactions').select('*').eq('user_id', userId),
-      supabase.from('trades').select('entry_price, exit_price, stop_loss, direction, risk_amount, account_id')
-        .eq('user_id', userId).eq('status', 'Closed').not('exit_price', 'is', null),
+      api.getAllTransactions(),
+      api.getClosedSummary(),
     ]);
     if (txRes.data) setAllTransactions(txRes.data as AccountTransaction[]);
     if (tradeRes.data) setClosedTrades(tradeRes.data as ClosedTradeRow[]);
-  }, [userId]);
+  }, []);
 
-  // Compute dynamic balances per account
   const dynamicBalances = useMemo(() => {
     const map: Record<string, number> = {};
     accounts.forEach(acc => {
@@ -74,7 +70,6 @@ export function useAccounts(userId: string | undefined) {
     return map;
   }, [accounts, allTransactions, closedTrades]);
 
-  // Enrich accounts with computed current_balance
   const enrichedAccounts = useMemo(() =>
     accounts.map(a => ({ ...a, current_balance: dynamicBalances[a.id] ?? a.current_balance })),
   [accounts, dynamicBalances]);
@@ -82,12 +77,7 @@ export function useAccounts(userId: string | undefined) {
   const activeAccount = enrichedAccounts.find(a => a.id === activeAccountId) || enrichedAccounts[0] || null;
 
   const fetchAccounts = useCallback(async () => {
-    if (!userId) return;
-    const { data } = await supabase
-      .from('trading_accounts')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at');
+    const { data } = await api.getAccounts();
     if (data) {
       setAccounts(data as TradingAccount[]);
       if (!activeAccountId && data.length > 0) {
@@ -96,14 +86,10 @@ export function useAccounts(userId: string | undefined) {
       }
     }
     setLoading(false);
-  }, [userId, activeAccountId]);
+  }, [activeAccountId]);
 
   const fetchTransactions = useCallback(async (accountId: string) => {
-    const { data } = await supabase
-      .from('account_transactions')
-      .select('*')
-      .eq('account_id', accountId)
-      .order('created_at', { ascending: false });
+    const { data } = await api.getTransactions(accountId);
     if (data) setTransactions(data as AccountTransaction[]);
   }, []);
 
@@ -116,23 +102,22 @@ export function useAccounts(userId: string | undefined) {
   };
 
   const createAccount = async (name: string, type: string, broker: string, initialBalance: number) => {
-    if (!userId) return;
-    const { error } = await supabase.from('trading_accounts').insert({
-      user_id: userId, name, type, broker: broker || null,
-      initial_balance: initialBalance, current_balance: initialBalance,
+    const { error } = await api.createAccount({
+      name, type, broker: broker || null,
+      initial_balance: initialBalance,
     });
     if (!error) await fetchAccounts();
     return { error };
   };
 
   const updateAccount = async (id: string, updates: Partial<Pick<TradingAccount, 'name' | 'type' | 'broker'>>) => {
-    const { error } = await supabase.from('trading_accounts').update(updates).eq('id', id);
+    const { error } = await api.updateAccount(id, updates);
     if (!error) await fetchAccounts();
     return { error };
   };
 
   const deleteAccount = async (id: string) => {
-    const { error } = await supabase.from('trading_accounts').delete().eq('id', id);
+    const { error } = await api.deleteAccount(id);
     if (!error) {
       if (activeAccountId === id) {
         const remaining = accounts.filter(a => a.id !== id);
@@ -146,20 +131,15 @@ export function useAccounts(userId: string | undefined) {
   };
 
   const addTransaction = async (accountId: string, type: 'deposit' | 'withdrawal', amount: number, note?: string) => {
-    if (!userId) return;
-
-    const { error: txError } = await supabase.from('account_transactions').insert({
-      account_id: accountId, user_id: userId, type, amount, note: note || null,
+    const { error: txError } = await api.createTransaction({
+      account_id: accountId, type, amount, note: note || null,
     });
     if (txError) return { error: txError };
-
-    // Refresh balance data (dynamic calc will update current_balance)
     await fetchBalanceData();
     await fetchTransactions(accountId);
     return { error: null };
   };
 
-  // Allow external refresh of balance data (e.g. after closing a trade)
   const refreshBalances = useCallback(async () => {
     await fetchBalanceData();
   }, [fetchBalanceData]);
