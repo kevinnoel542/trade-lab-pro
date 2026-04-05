@@ -215,7 +215,7 @@ export default function Accounts({ accounts, activeAccount, transactions, onSwit
                         </span>
                       </td>
                       <td className={`py-3 px-3 font-mono text-right font-bold text-sm ${tx.type === 'deposit' ? 'text-profit' : 'text-loss'}`}>
-                        {tx.type === 'deposit' ? '+' : '-'}${tx.amount.toLocaleString()}
+                        {tx.type === 'deposit' ? '+' : '-'}${Number(tx.amount).toLocaleString()}
                       </td>
                       <td className="py-3 px-3 text-xs text-muted-foreground">{tx.note || <span className="opacity-30">—</span>}</td>
                     </tr>

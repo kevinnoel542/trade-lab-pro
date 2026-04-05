@@ -59,13 +59,13 @@ export function useAccounts(userId: string | undefined) {
   const dynamicBalances = useMemo(() => {
     const map: Record<string, number> = {};
     accounts.forEach(acc => {
-      const deposits = allTransactions.filter(t => t.account_id === acc.id && t.type === 'deposit').reduce((s, t) => s + t.amount, 0);
-      const withdrawals = allTransactions.filter(t => t.account_id === acc.id && t.type === 'withdrawal').reduce((s, t) => s + t.amount, 0);
+      const deposits = allTransactions.filter(t => t.account_id === acc.id && t.type === 'deposit').reduce((s, t) => s + Number(t.amount), 0);
+      const withdrawals = allTransactions.filter(t => t.account_id === acc.id && t.type === 'withdrawal').reduce((s, t) => s + Number(t.amount), 0);
       const tradePnl = closedTrades.filter(t => t.account_id === acc.id).reduce((sum, t) => {
-        const rMult = calculateRMultiple(t.entry_price, t.exit_price!, t.stop_loss, t.direction as 'Buy' | 'Sell');
-        return sum + calculatePnlDollar(t.risk_amount, rMult);
+        const rMult = calculateRMultiple(Number(t.entry_price), Number(t.exit_price!), Number(t.stop_loss), t.direction as 'Buy' | 'Sell');
+        return sum + calculatePnlDollar(Number(t.risk_amount), rMult);
       }, 0);
-      map[acc.id] = Math.round((acc.initial_balance + deposits - withdrawals + tradePnl) * 100) / 100;
+      map[acc.id] = Math.round((Number(acc.initial_balance) + deposits - withdrawals + tradePnl) * 100) / 100;
     });
     return map;
   }, [accounts, allTransactions, closedTrades]);
