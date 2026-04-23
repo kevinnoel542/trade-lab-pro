@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=TradeVault
+Comment=Start TradeVault frontend and backend
+Exec=/usr/bin/env bash -lc "cd '/ABSOLUTE/PATH/TO/trade-lab-pro-main' && './scripts/start-servers.sh'"
+Path=/ABSOLUTE/PATH/TO/trade-lab-pro-main
+Icon=/ABSOLUTE/PATH/TO/trade-lab-pro-main/public/favicon.ico
+Terminal=true
+Categories=Development;Office;
+StartupNotify=true
